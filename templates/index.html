@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AI Sector Trading Simulator</title>
+  <link rel="stylesheet" href="/static/css/main.css"/>
+</head>
+<body>
+
+<div class="sidebar">
+  <div class="logo">AI Trader</div>
+  <nav>
+    <a class="nav-link active" data-tab="sim">Simulator</a>
+    <a class="nav-link" data-tab="screener">Screener</a>
+    <a class="nav-link" data-tab="news">Market News</a>
+    <a class="nav-link" data-tab="about">About</a>
+  </nav>
+  <div class="sidebar-footer">
+    <span>Paper trading only</span><br/>
+    <span>Not financial advice</span>
+  </div>
+</div>
+
+<div class="main">
+
+  <!-- ── Simulator Tab ── -->
+  <div class="tab-pane active" id="tab-sim">
+    <div class="page-header">
+      <div>
+        <h1>AI Sector Paper Trading Simulator</h1>
+        <p class="sub">Real Yahoo Finance data · 8 strategies · exportable trade logs</p>
+      </div>
+      <button class="btn-export" id="btn-export" disabled>Export Excel</button>
+    </div>
+
+    <!-- Controls -->
+    <div class="card">
+      <div class="ctrl-grid">
+        <div class="ctrl-item">
+          <label>Capital ($)</label>
+          <input type="number" id="capital" value="10000" min="1000" step="1000"/>
+        </div>
+        <div class="ctrl-item">
+          <label>Strategy</label>
+          <select id="strategy">
+            <option value="ai_hybrid" selected>AI Hybrid (Claude signals)</option>
+            <option value="momentum">Momentum (RSI + MACD)</option>
+            <option value="mean_rev">Mean Reversion (Bollinger)</option>
+            <option value="breakout">Breakout (Volume surge)</option>
+            <option value="trend_follow">Trend Following (MA cross)</option>
+            <option value="sentiment">Sentiment + Technicals</option>
+          </select>
+        </div>
+        <div class="ctrl-item">
+          <label>Duration</label>
+          <select id="duration">
+            <option value="1">1 month</option>
+            <option value="2">2 months</option>
+            <option value="3" selected>3 months</option>
+          </select>
+        </div>
+        <div class="ctrl-item">
+          <label>Risk level</label>
+          <select id="risk">
+            <option value="low">Low (5% stop-loss)</option>
+            <option value="med" selected>Medium (10% stop-loss)</option>
+            <option value="high">High (20% stop-loss)</option>
+          </select>
+        </div>
+      </div>
+      <div id="strat-desc" class="strat-desc"></div>
+    </div>
+
+    <!-- Sector picker -->
+    <div class="card">
+      <div class="card-label">AI Sectors — select 1 to 4</div>
+      <div class="sector-grid" id="sector-grid"></div>
+    </div>
+
+    <button class="btn-run" id="btn-run">Run simulation with real data</button>
+
+    <!-- AI analysis panel -->
+    <div class="ai-panel" id="ai-panel">
+      Select your sectors and strategy, then click Run simulation. The backend will fetch real price data from Yahoo Finance, compute technical indicators, and replay the price history using your chosen strategy.
+    </div>
+
+    <!-- Metrics -->
+    <div class="metrics-grid">
+      <div class="metric"><div class="metric-label">Portfolio value</div><div class="metric-val" id="m-val">—</div></div>
+      <div class="metric"><div class="metric-label">Total return</div><div class="metric-val" id="m-ret">—</div></div>
+      <div class="metric"><div class="metric-label">Sharpe ratio</div><div class="metric-val" id="m-sharpe">—</div></div>
+      <div class="metric"><div class="metric-label">Win rate</div><div class="metric-val" id="m-win">—</div></div>
+      <div class="metric"><div class="metric-label">Max drawdown</div><div class="metric-val" id="m-dd">—</div></div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="inner-tabs">
+      <button class="itab active" data-itab="positions">Positions</button>
+      <button class="itab" data-itab="trades">Trade log</button>
+      <button class="itab" data-itab="chart">Equity curve</button>
+      <button class="itab" data-itab="signals">Signal heatmap</button>
+    </div>
+
+    <div class="itab-pane active" id="itab-positions">
+      <div class="table-wrap">
+        <table id="pos-table">
+          <thead><tr><th>Ticker</th><th>Company</th><th>Sector</th><th>Shares</th><th>Entry</th><th>Current</th><th>P&L</th><th>Return</th></tr></thead>
+          <tbody id="pos-body"><tr><td colspan="8" class="empty-msg">Run simulation to see positions</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="itab-pane" id="itab-trades">
+      <div class="table-wrap" style="max-height:380px;overflow-y:auto">
+        <table id="trade-table">
+          <thead><tr><th>Day</th><th>Action</th><th>Ticker</th><th>Company</th><th>Sector</th><th>Price</th><th>Shares</th><th>P&L</th><th>Signal</th></tr></thead>
+          <tbody id="trade-body"><tr><td colspan="9" class="empty-msg">No trades yet</td></tr></tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="itab-pane" id="itab-chart">
+      <div class="chart-row">
+        <div class="chart-box">
+          <div class="chart-label">Equity curve</div>
+          <div style="position:relative;height:200px"><canvas id="eq-chart"></canvas></div>
+        </div>
+        <div class="chart-box">
+          <div class="chart-label">Daily P&L distribution</div>
+          <div style="position:relative;height:200px"><canvas id="pnl-chart"></canvas></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="itab-pane" id="itab-signals">
+      <div id="signal-grid" class="signal-grid"></div>
+    </div>
+  </div>
+
+  <!-- ── Screener Tab ── -->
+  <div class="tab-pane" id="tab-screener">
+    <div class="page-header">
+      <div>
+        <h1>Live Stock Screener</h1>
+        <p class="sub">Real-time indicators from Yahoo Finance</p>
+      </div>
+    </div>
+    <div class="card" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap">
+      <div class="ctrl-item" style="flex:1;min-width:120px">
+        <label>Ticker</label>
+        <input type="text" id="screen-ticker" placeholder="e.g. NVDA" style="text-transform:uppercase"/>
+      </div>
+      <button class="btn-secondary" onclick="screenTicker()">Fetch live quote</button>
+    </div>
+    <div id="screener-result" class="card" style="display:none"></div>
+  </div>
+
+  <!-- ── Market News Tab ── -->
+  <div class="tab-pane" id="tab-news">
+    <div class="page-header">
+      <div>
+        <h1>Market News &amp; AI Research</h1>
+        <p class="sub">Yahoo Finance headlines · GPT-powered sentiment analysis · feeds into Sentiment strategy</p>
+      </div>
+    </div>
+
+    <!-- Sector picker -->
+    <div class="card">
+      <div class="card-label">Select sectors to research — 1 to 4</div>
+      <div class="sector-grid" id="news-sector-grid"></div>
+    </div>
+
+    <button class="btn-run" id="btn-fetch-news" onclick="fetchMarketNews()">Fetch News &amp; AI Research</button>
+
+    <!-- Status / loading -->
+    <div class="ai-panel" id="news-status">
+      Select sectors above and click Fetch News. Headlines are pulled from Yahoo Finance RSS and analyzed by OpenAI GPT-4o-mini.
+      Sentiment scores are stored and will power the <strong>Sentiment + Technicals</strong> strategy in the Simulator.
+    </div>
+
+    <!-- Results -->
+    <div id="news-results" style="display:none">
+      <!-- Market themes -->
+      <div class="card" id="news-themes-card">
+        <div class="card-label">Market Themes</div>
+        <div id="news-themes"></div>
+      </div>
+
+      <!-- Sector summaries -->
+      <div class="card-label" style="margin:1.2rem 0 0.5rem">Sector Analysis</div>
+      <div id="news-sectors" class="news-sector-grid"></div>
+
+      <!-- Per-ticker sentiment -->
+      <div class="card-label" style="margin:1.2rem 0 0.5rem">Ticker Sentiment</div>
+      <div id="news-tickers" class="news-tickers-grid"></div>
+    </div>
+  </div>
+
+  <!-- ── About Tab ── -->
+  <div class="tab-pane" id="tab-about">
+    <div class="page-header"><div><h1>About this app</h1></div></div>
+    <div class="card about-card">
+      <h2>Architecture</h2>
+      <ul>
+        <li><strong>Backend:</strong> Python 3 + Flask. Real market data via <code>yfinance</code>.</li>
+        <li><strong>Indicators:</strong> RSI(14), MACD(12,26,9), Bollinger Bands(20,2), MA20/50, volume ratio — all computed in <code>app.py → compute_indicators()</code>.</li>
+        <li><strong>Simulation:</strong> Replays real historical price paths day by day. Applies stop-loss and take-profit on each tick. Generates buy signals using your chosen strategy.</li>
+        <li><strong>Strategies:</strong> AI Hybrid, Momentum, Mean Reversion, Breakout, Trend Following, Sentiment. Each is a standalone function in <code>app.py</code> — easy to extend.</li>
+        <li><strong>Export:</strong> <code>/api/export</code> returns a formatted .xlsx with 4 sheets: Summary, Trade Log, Equity Curve, Open Positions.</li>
+      </ul>
+      <h2>Extending</h2>
+      <ul>
+        <li>Add new strategies: write a <code>signal_yourname(ind)</code> function and register it in <code>STRATEGY_SIGNALS</code>.</li>
+        <li>Add real sentiment: replace the random stub in <code>signal_sentiment()</code> with a real NLP call (e.g. FinBERT, OpenAI, or news API).</li>
+        <li>Add more sectors: extend the <code>SECTORS</code> dict at the top of <code>app.py</code>.</li>
+        <li>Persist results: swap the in-memory flow for a SQLite database (see <code>TODO</code> comments).</li>
+        <li>Schedule auto-runs: use <code>APScheduler</code> or a cron job calling <code>/api/simulate</code>.</li>
+      </ul>
+      <h2>Disclaimer</h2>
+      <p>This is a paper trading simulator for educational purposes only. Historical performance does not predict future results. Not financial advice.</p>
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="/static/js/main.js"></script>
+</body>
+</html>
