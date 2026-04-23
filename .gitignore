@@ -1,6 +1,8 @@
-.env
-venv/
+config.py
+trades.db
+app.log
+app.pid
 __pycache__/
 *.pyc
-*.pyo
-.DS_Store
+venv/
+*.egg-info/
