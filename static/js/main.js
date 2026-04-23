@@ -51,9 +51,22 @@ async function init() {
   document.querySelectorAll(".nav-link").forEach(link => {
     link.addEventListener("click", () => {
       document.querySelectorAll(".nav-link").forEach(l => l.classList.remove("active"));
-      document.querySelectorAll(".tab-pane").forEach(p => p.classList.remove("active"));
       link.classList.add("active");
-      document.getElementById("tab-" + link.dataset.tab).classList.add("active");
+      // Scroll to the clicked section
+      const pane = document.getElementById("tab-" + link.dataset.tab);
+      if (pane) pane.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (link.dataset.tab === "portfolio") loadPortfolio();
+      if (link.dataset.tab === "tradelog")  loadTradeLog();
+    });
+  });
+
+  // Portfolio inner tabs
+  document.querySelectorAll(".ptab").forEach(btn => {
+    btn.addEventListener("click", () => {
+      document.querySelectorAll(".ptab").forEach(b => b.classList.remove("active"));
+      document.querySelectorAll(".ptab-pane").forEach(p => p.classList.remove("active"));
+      btn.classList.add("active");
+      document.getElementById("ptab-" + btn.dataset.ptab).classList.add("active");
     });
   });
 
@@ -63,6 +76,11 @@ async function init() {
 
   document.getElementById("btn-run").onclick = runSimulation;
   document.getElementById("btn-export").onclick = exportExcel;
+
+  // Always load portfolio data on page load (data lives in DB, survives refresh)
+  loadPortfolio();
+  // Pre-load all sectors for the Stock Picker
+  loadAllSectors();
 }
 
 function toggleSector(id) {
@@ -496,4 +514,415 @@ function renderNewsResults(data) {
   }
 
   document.getElementById("news-results").style.display = "block";
+}
+
+// ── Portfolio Tab ─────────────────────────────────────────────────────────────
+
+let portEqChart = null;
+
+async function loadPortfolio() {
+  const statusEl = document.getElementById("port-status");
+  statusEl.innerHTML = '<span class="spinner"></span> Loading&hellip;';
+
+  try {
+    const [portRes, histRes] = await Promise.all([
+      fetch("/api/portfolio"),
+      fetch("/api/history"),
+    ]);
+    const port = await portRes.json();
+    const hist = await histRes.json();
+
+    if (port.error) { statusEl.innerHTML = `<span style="color:var(--red)">${escHtml(port.error)}</span>`; return; }
+
+    // Metrics
+    const retGain = port.return_pct >= 0;
+    document.getElementById("pm-val").textContent  = fUSD(port.total_value);
+    const pmRet = document.getElementById("pm-ret");
+    pmRet.textContent = fPct(port.return_pct);
+    pmRet.className   = "metric-val " + (retGain ? "up" : "down");
+    document.getElementById("pm-cash").textContent = fUSD(port.cash);
+    document.getElementById("pm-win").textContent  = hist.win_rate + "%";
+    const pmPnl = document.getElementById("pm-pnl");
+    pmPnl.textContent = fUSD(hist.total_pnl);
+    pmPnl.className   = "metric-val " + (hist.total_pnl >= 0 ? "up" : "down");
+
+    const ts = new Date().toLocaleTimeString();
+    const startedAt = port.started_at ? ` &middot; Started: <strong>${escHtml(port.started_at)}</strong>` : "";
+    statusEl.innerHTML =
+      `&#x1F4CA; <strong>Portfolio value: ${fUSD(port.total_value)}</strong>  Return: ` +
+      `<strong style="color:var(--${retGain ? "green" : "red"})">${fPct(port.return_pct)} (${fUSD(port.return_dollar)})</strong>` +
+      `  Initial capital: <strong>${fUSD(port.initial)}</strong>${startedAt}  &middot; Updated: ${ts}`;
+
+    // Positions table
+    renderPortPositions(port.positions);
+
+    // Trade history table
+    renderPortHistory(hist.trades);
+
+    // Equity curve
+    renderPortEquity(port.daily_runs, port.initial);
+
+  } catch (err) {
+    statusEl.innerHTML = `<strong style="color:var(--red)">Error:</strong> ${escHtml(err.message)}`;
+  }
+}
+
+function renderPortPositions(positions) {
+  const tbody = document.getElementById("port-pos-body");
+  if (!positions || !positions.length) {
+    tbody.innerHTML = '<tr><td colspan="10" class="empty-msg">No open positions yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = positions.map(p => {
+    const color = p.pnl >= 0 ? "var(--green)" : "var(--red)";
+    return `<tr>
+      <td style="font-weight:700;font-family:var(--font-mono)">${p.ticker}</td>
+      <td style="color:var(--text-muted)">${escHtml(p.name)}</td>
+      <td style="color:var(--text-muted)">${escHtml(p.sector)}</td>
+      <td>${p.shares}</td>
+      <td>$${f2(p.entry)}</td>
+      <td>$${f2(p.current)}</td>
+      <td style="font-weight:600">$${f2(p.market_value)}</td>
+      <td style="color:${color};font-weight:600">${fUSD(p.pnl)}</td>
+      <td style="color:${color}">${fPct(p.pct)}</td>
+      <td style="color:var(--text-faint);font-size:11px">${escHtml(p.date_opened)}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderPortHistory(trades) {
+  const tbody = document.getElementById("port-hist-body");
+  if (!trades || !trades.length) {
+    tbody.innerHTML = '<tr><td colspan="9" class="empty-msg">No trades yet.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = trades.map(t => {
+    const pnlStr = t.action === "SELL"
+      ? `<span style="color:${t.pnl >= 0 ? "var(--green)" : "var(--red)"};font-weight:600">${fUSD(t.pnl)}</span>`
+      : `<span style="color:var(--text-faint)">—</span>`;
+    return `<tr>
+      <td style="font-size:11px;color:var(--text-muted)">${escHtml(t.date)}</td>
+      <td><span class="badge ${t.action === "BUY" ? "b-buy" : "b-sell"}">${t.action}</span></td>
+      <td style="font-weight:700;font-family:var(--font-mono)">${escHtml(t.ticker)}</td>
+      <td style="color:var(--text-muted)">${escHtml(t.name || "")}</td>
+      <td style="color:var(--text-muted)">${escHtml(t.sector || "")}</td>
+      <td>$${f2(t.price)}</td>
+      <td>${t.shares}</td>
+      <td>${pnlStr}</td>
+      <td style="color:var(--text-muted);font-size:11px">${escHtml(t.signal || "")}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderPortEquity(runs, initial) {
+  if (portEqChart) { portEqChart.destroy(); portEqChart = null; }
+  const canvas = document.getElementById("port-eq-chart");
+  if (!runs || !runs.length) {
+    canvas.parentElement.innerHTML = '<p style="color:var(--text-faint);padding:20px">No daily snapshots yet. Run the auto-trader once to see the equity curve.</p>';
+    return;
+  }
+  const isDark  = matchMedia("(prefers-color-scheme:dark)").matches;
+  const gridCol = isDark ? "rgba(255,255,255,.06)" : "rgba(0,0,0,.05)";
+  const tickCol = isDark ? "#666" : "#999";
+  const lastVal = runs[runs.length - 1].portfolio_value;
+  const lineCol = lastVal >= initial ? "#1D9E75" : "#E24B4A";
+
+  portEqChart = new Chart(canvas, {
+    type: "line",
+    data: {
+      labels: runs.map(r => r.date),
+      datasets: [
+        {
+          label: "Portfolio Value",
+          data: runs.map(r => r.portfolio_value),
+          borderColor: lineCol,
+          borderWidth: 2,
+          fill: true,
+          backgroundColor: lineCol + "18",
+          pointRadius: runs.length < 30 ? 3 : 0,
+          tension: 0.3,
+        },
+        {
+          label: "Initial Capital",
+          data: runs.map(() => initial),
+          borderColor: "rgba(100,100,100,.4)",
+          borderWidth: 1,
+          borderDash: [4, 4],
+          fill: false,
+          pointRadius: 0,
+        }
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: true, labels: { color: tickCol, font: { size: 11 } } },
+        tooltip: { callbacks: { label: ctx => fUSD(ctx.parsed.y) } }
+      },
+      scales: {
+        x: { ticks: { color: tickCol, font: { size: 10 }, maxTicksLimit: 10 }, grid: { color: gridCol } },
+        y: { ticks: { callback: v => "$" + Math.round(v / 1000) + "k", color: tickCol, font: { size: 10 } }, grid: { color: gridCol } }
+      }
+    }
+  });
+}
+
+async function runNow() {
+  const btn = document.getElementById("btn-run-now");
+  const statusEl = document.getElementById("port-status");
+  btn.disabled = true;
+  btn.textContent = "Running\u2026";
+  statusEl.innerHTML = '<span class="spinner"></span> Fetching data and running autonomous paper-trade \u2014 please wait\u2026';
+
+  try {
+    const res = await fetch("/api/run-now", { method: "POST" });
+    const data = await res.json();
+    if (data.error) {
+      statusEl.innerHTML = `<strong style="color:var(--red)">Error:</strong> ${escHtml(data.error)}`;
+    } else {
+      await loadPortfolio();
+    }
+  } catch (err) {
+    statusEl.innerHTML = `<strong style="color:var(--red)">Error:</strong> ${escHtml(err.message)}`;
+  }
+
+  btn.disabled = false;
+  btn.textContent = "Run Now";
+}
+
+// ── AI Stock Picker ──────────────────────────────────────────────────────────
+
+const pickerSectors = new Set();
+let allSectorsData = {};
+
+async function loadAllSectors() {
+  try {
+    const res = await fetch("/api/all-sectors");
+    allSectorsData = await res.json();
+
+    const grid = document.getElementById("picker-sector-grid");
+    if (!grid) return;
+    grid.innerHTML = "";
+
+    Object.entries(allSectorsData).forEach(([id, sec]) => {
+      // Default: pre-select the original 6 AI sectors
+      const defaultOn = ["semis","cloud_ai","ai_software","robotics","ev_auto","biotech_ai"].includes(id);
+      if (defaultOn) pickerSectors.add(id);
+
+      const pill = document.createElement("div");
+      pill.className = "sector-pill" + (defaultOn ? " on" : "");
+      pill.id = "psp-" + id;
+      pill.style.setProperty("--pill-color", sec.color);
+      pill.innerHTML = `<span class="sp-name">${sec.name}</span><span class="sp-tickers">${sec.stocks.slice(0,4).join(" · ")}</span>`;
+      pill.onclick = () => togglePickerSector(id);
+      grid.appendChild(pill);
+    });
+  } catch (e) {
+    console.warn("loadAllSectors failed:", e);
+  }
+}
+
+function togglePickerSector(id) {
+  if (pickerSectors.has(id)) {
+    pickerSectors.delete(id);
+    document.getElementById("psp-" + id)?.classList.remove("on");
+  } else {
+    pickerSectors.add(id);
+    document.getElementById("psp-" + id)?.classList.add("on");
+  }
+}
+
+function selectAllPickerSectors() {
+  Object.keys(allSectorsData).forEach(id => {
+    pickerSectors.add(id);
+    document.getElementById("psp-" + id)?.classList.add("on");
+  });
+}
+
+function clearPickerSectors() {
+  pickerSectors.clear();
+  document.querySelectorAll("[id^='psp-']").forEach(el => el.classList.remove("on"));
+}
+
+async function runPicker() {
+  const btn       = document.getElementById("btn-pick");
+  const statusEl  = document.getElementById("picker-status");
+  const resultsEl = document.getElementById("picker-results");
+
+  if (pickerSectors.size === 0) {
+    alert("Please select at least one industry sector.");
+    return;
+  }
+
+  const lookback   = parseInt(document.getElementById("picker-lookback").value, 10);
+  const horizon    = parseInt(document.getElementById("picker-horizon").value,   10);
+  const targetPct  = parseFloat(document.getElementById("picker-target").value);
+  const nStocks    = parseInt(document.getElementById("picker-n").value,          10);
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span> Analyzing&hellip;';
+  statusEl.style.display = "block";
+  statusEl.innerHTML = `<span class="spinner"></span> Fetching ${lookback}-month data for ${pickerSectors.size} sector(s) and scoring stocks &mdash; this may take 10&ndash;30 seconds&hellip;`;
+  resultsEl.style.display = "none";
+
+  try {
+    const res = await fetch("/api/pick-stocks", {
+      method:  "POST",
+      headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({
+        sectors:    [...pickerSectors],
+        lookback,
+        horizon,
+        target_pct: targetPct,
+        n_stocks:   nStocks,
+      })
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      statusEl.innerHTML = `<strong style="color:var(--red)">Error:</strong> ${escHtml(data.error)}`;
+      return;
+    }
+
+    statusEl.style.display = "none";
+    renderPickResults(data);
+    resultsEl.style.display = "block";
+  } catch (err) {
+    statusEl.innerHTML = `<strong style="color:var(--red)">Error:</strong> ${escHtml(err.message)}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Find Stocks";
+  }
+}
+
+function renderPickResults(data) {
+  const picks = data.picks || [];
+
+  document.getElementById("pk-screened").textContent  = data.total_screened ?? "—";
+  document.getElementById("pk-qualified").textContent = data.total_qualified ?? "—";
+
+  if (picks.length > 0) {
+    const avgRet = picks.reduce((s, p) => s + p.predicted_return, 0) / picks.length;
+    document.getElementById("pk-avg-ret").textContent = `${avgRet.toFixed(1)}%`;
+    document.getElementById("pk-top").textContent     = picks[0].ticker;
+  } else {
+    document.getElementById("pk-avg-ret").textContent = "—";
+    document.getElementById("pk-top").textContent     = "None";
+  }
+
+  const tbody = document.getElementById("picker-body");
+  if (picks.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="14" class="empty-msg">No stocks met the criteria. Try lowering the target return or selecting more sectors.</td></tr>`;
+    return;
+  }
+
+  tbody.innerHTML = picks.map((p, i) => {
+    const retCls = p.predicted_return >= data.target_pct * 1.5 ? "ret-high"
+                 : p.predicted_return >= data.target_pct       ? "ret-ok"
+                 : "ret-low";
+    const signals = [
+      p.macd_bull  ? "MACD\u2191" : "",
+      p.trend_bull ? "MA\u2191"   : "",
+      p.vol_conf   ? "Vol\u2191"  : "",
+    ].filter(Boolean).join(" ");
+
+    const confBar = `<div class="conf-wrap"><div class="conf-bar"><div class="conf-fill" style="width:${p.confidence}%;background:${confColor(p.confidence)}"></div></div><span class="conf-label">${p.confidence}%</span></div>`;
+    const rsiCls  = p.rsi >= 70 ? "rsi-hot" : p.rsi <= 35 ? "rsi-cold" : "rsi-ok";
+
+    return `<tr>
+      <td>${i + 1}</td>
+      <td><strong>${escHtml(p.ticker)}</strong></td>
+      <td class="name-cell">${escHtml(p.name)}</td>
+      <td>${escHtml(p.sector)}</td>
+      <td>$${p.price.toFixed(2)}</td>
+      <td class="${p.r1m  >= 0 ? "val-pos" : "val-neg"}">${p.r1m  >= 0 ? "+" : ""}${p.r1m.toFixed(1)}%</td>
+      <td class="${p.r3m  >= 0 ? "val-pos" : "val-neg"}">${p.r3m  >= 0 ? "+" : ""}${p.r3m.toFixed(1)}%</td>
+      <td class="${p.r6m  >= 0 ? "val-pos" : "val-neg"}">${p.r6m  >= 0 ? "+" : ""}${p.r6m.toFixed(1)}%</td>
+      <td class="${rsiCls}">${p.rsi}</td>
+      <td>${p.sharpe.toFixed(2)}</td>
+      <td>${p.composite_score.toFixed(1)}</td>
+      <td class="${retCls}"><strong>${p.predicted_return >= 0 ? "+" : ""}${p.predicted_return.toFixed(1)}%</strong><br><small>in ${data.horizon_months}mo</small></td>
+      <td>${confBar}</td>
+      <td class="signals-cell">${signals || "—"}</td>
+    </tr>`;
+  }).join("");
+}
+
+function confColor(pct) {
+  if (pct >= 70) return "#22c55e";
+  if (pct >= 45) return "#f59e0b";
+  return "#ef4444";
+}
+
+// ── Auto-Trade Log ───────────────────────────────────────────────────────────
+
+async function loadTradeLog() {
+  try {
+    const res  = await fetch("/api/trade-log");
+    const data = await res.json();
+    renderRunsSummary(data.daily_runs || []);
+    renderTradesTable(data.trades     || []);
+  } catch (err) {
+    document.getElementById("tl-runs-body").innerHTML =
+      `<tr><td colspan="7" class="empty-msg" style="color:var(--red)">Error: ${escHtml(err.message)}</td></tr>`;
+  }
+}
+
+function renderRunsSummary(runs) {
+  const tbody = document.getElementById("tl-runs-body");
+  if (!runs.length) {
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-msg">No run records yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = runs.map(r => {
+    const retCls = r.return_pct >= 0 ? "val-pos" : "val-neg";
+    const retStr = (r.return_pct >= 0 ? "+" : "") + (r.return_pct * 100).toFixed(3) + "%";
+    const time   = r.created_at ? r.created_at.slice(11, 19) + " UTC" : "—";
+    // Summarise notes: strip repeated "No trades;" junk, keep trade descriptions
+    const notes  = (r.notes || "")
+      .split(";")
+      .map(s => s.trim())
+      .filter(Boolean)
+      .join(" | ") || "—";
+    return `<tr>
+      <td>${r.date}</td>
+      <td>$${r.portfolio_value.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+      <td>$${r.cash.toLocaleString("en-US", {minimumFractionDigits:2, maximumFractionDigits:2})}</td>
+      <td class="${retCls}">${retStr}</td>
+      <td>${r.trades_count}</td>
+      <td>${time}</td>
+      <td style="font-size:12px;color:var(--text-muted);max-width:340px;word-break:break-word">${escHtml(notes)}</td>
+    </tr>`;
+  }).join("");
+}
+
+function renderTradesTable(trades) {
+  const tbody = document.getElementById("tl-trades-body");
+  if (!trades.length) {
+    tbody.innerHTML = `<tr><td colspan="11" class="empty-msg">No trades executed yet.</td></tr>`;
+    return;
+  }
+  tbody.innerHTML = trades.map(t => {
+    const isBuy   = t.action === "BUY";
+    const actCls  = isBuy ? "val-pos" : "val-neg";
+    const value   = (t.price * t.shares).toFixed(2);
+    const pnlStr  = t.pnl !== 0
+      ? `<span class="${t.pnl >= 0 ? "val-pos" : "val-neg"}">${t.pnl >= 0 ? "+" : ""}$${t.pnl.toFixed(2)}</span>`
+      : `<span style="color:var(--text-faint)">—</span>`;
+    const time    = t.time ? t.time.slice(11, 16) + " UTC" : "";
+    return `<tr>
+      <td>${t.date}<br><small style="color:var(--text-muted)">${time}</small></td>
+      <td class="${actCls}"><strong>${t.action}</strong></td>
+      <td><strong>${escHtml(t.ticker)}</strong></td>
+      <td class="name-cell">${escHtml(t.name)}</td>
+      <td style="font-size:12px">${escHtml(t.sector)}</td>
+      <td>$${t.price.toFixed(2)}</td>
+      <td>${t.shares}</td>
+      <td>$${value}</td>
+      <td>${pnlStr}</td>
+      <td style="font-size:12px">${escHtml(t.strategy)}</td>
+      <td style="font-size:11px;color:var(--text-muted);max-width:260px;word-break:break-word">${escHtml(t.signal)}</td>
+    </tr>`;
+  }).join("");
 }

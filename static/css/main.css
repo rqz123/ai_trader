@@ -103,6 +103,10 @@ nav { display: flex; flex-direction: column; gap: 4px; flex: 1; }
   max-width: 1100px;
 }
 
+.tab-pane {
+  scroll-margin-top: 1.5rem;
+}
+
 /* ── Page Header ── */
 .page-header {
   display: flex;
@@ -627,4 +631,142 @@ tr:hover td { background: var(--bg); }
   .main { margin-left: 0; padding: 1rem; }
   .metrics-grid { grid-template-columns: repeat(2, 1fr); }
   .chart-row { grid-template-columns: 1fr; }
+}
+
+/* ── Portfolio Tab ── */
+.ptab {
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-family: var(--font);
+  transition: all .12s;
+}
+.ptab:hover { color: var(--text); }
+.ptab.active { color: var(--text); border-bottom-color: var(--text); font-weight: 600; }
+
+.ptab-pane { display: none; }
+.ptab-pane.active { display: block; }
+
+.btn-run-now {
+  padding: 9px 20px;
+  background: var(--green);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font);
+  transition: background .12s;
+  white-space: nowrap;
+}
+.btn-run-now:hover { background: #178a63; }
+.btn-run-now:disabled { opacity: .5; cursor: not-allowed; }
+
+.paper-badge {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 2px 9px;
+  background: #f59e0b;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  border-radius: 4px;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+
+/* ── AI Stock Picker ─────────────────────────────────────────────────────── */
+.ctrl-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ctrl-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+}
+.ctrl-item label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--text-muted);
+}
+.ctrl-item select,
+.ctrl-item input[type="number"] {
+  padding: 7px 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-card);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 13px;
+  width: 160px;
+}
+.btn-primary {
+  padding: 9px 22px;
+  background: var(--blue);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-lg);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font);
+  transition: background .12s;
+}
+.btn-primary:hover    { background: var(--blue-dark); }
+.btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+.btn-sm {
+  padding: 5px 14px;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: var(--font);
+  transition: background .12s;
+}
+.btn-sm:hover { background: var(--border); }
+
+/* Confidence bar */
+.conf-wrap  { display:flex; align-items:center; gap:6px; }
+.conf-bar   { flex:1; height:6px; background:var(--border); border-radius:3px; overflow:hidden; min-width:50px; }
+.conf-fill  { height:100%; border-radius:3px; transition:width .3s; }
+.conf-label { font-size:11px; color:var(--text-muted); white-space:nowrap; }
+
+/* Predicted return color coding */
+.ret-high { color: #16a34a; font-size: 13px; }
+.ret-ok   { color: #2563eb; font-size: 13px; }
+.ret-low  { color: var(--text-muted); font-size: 13px; }
+
+/* RSI color coding */
+.rsi-hot  { color: #ef4444; font-weight: 600; }
+.rsi-cold { color: #3b82f6; font-weight: 600; }
+.rsi-ok   { color: var(--text); }
+
+.signals-cell { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.name-cell    { max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Disclaimer */
+.picker-disclaimer {
+  margin-top: 20px;
+  padding: 12px 16px;
+  background: rgba(245,158,11,.08);
+  border: 1px solid rgba(245,158,11,.25);
+  border-radius: var(--radius);
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.5;
 }
